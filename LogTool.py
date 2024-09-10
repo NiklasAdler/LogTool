@@ -62,10 +62,9 @@ def check_sanctions(accounts):
         socialclub_map[account['socialclub']].append(account)
         socialclub_to_account_ids[account['socialclub']].add(account['account_id'])
 
-    # Logik für §1.1-Prüfung (Social Club mit mehreren Account-IDs)
+    # Logik für §1.1-Prüfung 
     for account_id, socialclubs in account_map.items():
         if len(socialclubs) > 1:
-            # Prüfen, ob ein anderer Account diese Social Clubs verwendet
             for socialclub in socialclubs:
                 other_accounts = socialclub_to_account_ids[socialclub] - {account_id}
                 if other_accounts:
@@ -78,7 +77,6 @@ def check_sanctions(accounts):
                     }
                     break
 
-    # Logik für §1.4-Prüfung (Mehrere Accounts mit einem Social Club)
     for socialclub, accounts in socialclub_map.items():
         if len(accounts) > 2:
             accounts_sorted_by_logins = sorted(accounts, key=lambda x: x['total_logins'], reverse=True)
@@ -99,7 +97,6 @@ def check_sanctions(accounts):
     already_combined_ids = set()
     combined_sanctions_map = {}
 
-    # Kombinierte Sanktionen
     for account_id, sanction_1_1 in list(sanctions_1_1.items()):
         for socialclub, sanctions in list(sanctions_1_4.items()):
             for sanction_1_4 in sanctions:
@@ -119,12 +116,10 @@ def check_sanctions(accounts):
     combined_sanctions = list(combined_sanctions_map.values())
 
     sanctions_1_1 = [s for s in sanctions_1_1.values() if s['Account ID'] not in already_combined_ids]
-    # Hinweis: §1.4-Fälle werden hier nicht entfernt, sie bleiben in der GUI sichtbar
 
     return sanctions_1_1, sanctions_1_4, combined_sanctions
 
 def combine_sanctions(sanction_1_1, sanction_1_4):
-    # Logik, um sicherzustellen, dass die kombinierte Sanktion immer ein permanenter Bann ist
     if sanction_1_1 == sanction_1_4:
         return sanction_1_1
     
@@ -134,11 +129,23 @@ def combine_sanctions(sanction_1_1, sanction_1_4):
         combined_logins = logins_1_1 + logins_1_4
         return f'Permanenter Bann (Logins: {combined_logins})'
     
-    # Wenn einer der beiden Texte ein 60-Tage-Bann ist, wird dies zu einem permanenten Bann konvertiert
     if "Hauptaccount Bann 60 Tage" in sanction_1_1 or "Hauptaccount Bann 60 Tage" in sanction_1_4:
         return 'Permanenter Bann'
     
     return f"Permanenter Bann"
+
+def combine_sanction_sets(existing_sanction, new_sanction):
+    """
+    Kombiniere die Sanktionen für eine Account-ID, behalte dabei die Formatierung bei.
+    Priorisiere "Permanenter Bann", wenn es in einer der Sanktionen vorkommt.
+    """
+    if "Permanenter Bann" in existing_sanction or "Permanenter Bann" in new_sanction:
+        return "Permanenter Bann"
+    elif "Hauptaccount Bann 60 Tage" in existing_sanction or "Hauptaccount Bann 60 Tage" in new_sanction:
+        return "Hauptaccount Bann 60 Tage"
+    else:
+        
+        return f"{existing_sanction}, {new_sanction}"
 
 def show_summary(sanctions_1_1, sanctions_1_4, combined_sanctions):
     summary = (
@@ -328,14 +335,48 @@ def submit():
     root.destroy()
 
 def save_sanctions(selected_sanctions):
+    # Verwende defaultdict, um Sanktionen pro Account ID zu sammeln
+    combined_sanctions = defaultdict(lambda: {
+        'Regelverstoß': set(),
+        'Socialclubs': set(),
+        'Sanktion': None,  # Halte hier die zusammengeführte Sanktion
+        'Benutzername': None
+    })
+
+    # Sammle alle Informationen pro Account ID
+    for sanction in selected_sanctions:
+        account_id = sanction['Account ID']
+        combined_sanctions[account_id]['Benutzername'] = sanction['Benutzername']
+        combined_sanctions[account_id]['Regelverstoß'].add(sanction['Regelverstoß'])
+        combined_sanctions[account_id]['Socialclubs'].add(sanction['Socialclubs'])
+
+        # Kombiniere Sanktionen mit der richtigen Formatierung
+        if combined_sanctions[account_id]['Sanktion']:
+            combined_sanctions[account_id]['Sanktion'] = combine_sanction_sets(
+                combined_sanctions[account_id]['Sanktion'], sanction['Sanktion']
+            )
+        else:
+            combined_sanctions[account_id]['Sanktion'] = sanction['Sanktion']
+
+    # Schreibe die kombinierten Sanktionen in die CSV-Datei
     with open(config['DEFAULT']['DefaultExportPath'], 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-        for sanction in selected_sanctions:
-            writer.writerow(sanction)
+
+        for account_id, sanction_data in combined_sanctions.items():
+            writer.writerow({
+                'Regelverstoß': ', '.join(sanction_data['Regelverstoß']),
+                'Account ID': account_id,
+                'Benutzername': sanction_data['Benutzername'],
+                'Socialclubs': ', '.join(sanction_data['Socialclubs']),
+                'Sanktion': sanction_data['Sanktion']
+            })
+
     log_action("Sanktionen in sanktionen_output.csv gespeichert")
     messagebox.showinfo("Erfolg", "Ausgewählte Sanktionen gespeichert.")
+
+
 
 def export_sanctions_command():
     selected_sanctions = []
@@ -354,14 +395,48 @@ def export_sanctions_command():
         export_sanctions(selected_sanctions, file_path)
 
 def export_sanctions(sanctions, file_path):
+    # Verwende defaultdict, um Sanktionen pro Account ID zu sammeln
+    combined_sanctions = defaultdict(lambda: {
+        'Regelverstoß': set(),
+        'Socialclubs': set(),
+        'Sanktion': None,  # Halte hier die zusammengeführte Sanktion
+        'Benutzername': None
+    })
+
+    # Sammle alle Informationen pro Account ID
+    for sanction in sanctions:
+        account_id = sanction['Account ID']
+        combined_sanctions[account_id]['Benutzername'] = sanction['Benutzername']
+        combined_sanctions[account_id]['Regelverstoß'].add(sanction['Regelverstoß'])
+        combined_sanctions[account_id]['Socialclubs'].add(sanction['Socialclubs'])
+
+        # Kombiniere Sanktionen mit der richtigen Formatierung
+        if combined_sanctions[account_id]['Sanktion']:
+            combined_sanctions[account_id]['Sanktion'] = combine_sanction_sets(
+                combined_sanctions[account_id]['Sanktion'], sanction['Sanktion']
+            )
+        else:
+            combined_sanctions[account_id]['Sanktion'] = sanction['Sanktion']
+
+    # Schreibe die kombinierten Sanktionen in die CSV-Datei
     with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-        for sanction in sanctions:
-            writer.writerow(sanction)
+
+        for account_id, sanction_data in combined_sanctions.items():
+            writer.writerow({
+                'Regelverstoß': ', '.join(sanction_data['Regelverstoß']),
+                'Account ID': account_id,
+                'Benutzername': sanction_data['Benutzername'],
+                'Socialclubs': ', '.join(sanction_data['Socialclubs']),
+                'Sanktion': sanction_data['Sanktion']
+            })
+
     log_action(f"Sanktionen in {file_path} exportiert")
     messagebox.showinfo("Erfolg", f"Sanktionen in {file_path} exportiert.")
+
+
 
 try:
     with open('acp_data.txt', 'r') as file:
