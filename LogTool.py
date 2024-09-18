@@ -73,7 +73,8 @@ def check_sanctions(accounts):
                         'Account ID': account_id,
                         'Benutzername': accounts[0]['username'],
                         'Socialclubs': ', '.join(socialclubs),
-                        'Sanktion': 'Permanenter Bann'
+                        'Sanktion': 'Permanenter Bann',
+                        'total_logins': account['total_logins']  # Logins hinzufügen
                     }
                     break
 
@@ -91,7 +92,8 @@ def check_sanctions(accounts):
                     'Account ID': acc['account_id'],
                     'Benutzername': acc['username'],
                     'Socialclubs': acc['socialclub'],
-                    'Sanktion': sanction_text
+                    'Sanktion': sanction_text,
+                    'total_logins': acc['total_logins']  # Logins hinzufügen
                 })
 
     already_combined_ids = set()
@@ -108,7 +110,8 @@ def check_sanctions(accounts):
                             'Account ID': account_id,
                             'Benutzername': sanction_1_1['Benutzername'],
                             'Socialclubs': sanction_1_1['Socialclubs'],
-                            'Sanktion': combine_sanctions(sanction_1_1['Sanktion'], sanction_1_4['Sanktion'])
+                            'Sanktion': combine_sanctions(sanction_1_1['Sanktion'], sanction_1_4['Sanktion']),
+                            'total_logins': sanction_1_4['total_logins']  # Logins hinzufügen
                         }
                     already_combined_ids.add(account_id)
                     break
@@ -144,7 +147,6 @@ def combine_sanction_sets(existing_sanction, new_sanction):
     elif "Hauptaccount Bann 60 Tage" in existing_sanction or "Hauptaccount Bann 60 Tage" in new_sanction:
         return "Hauptaccount Bann 60 Tage"
     else:
-        
         return f"{existing_sanction}, {new_sanction}"
 
 def show_summary(sanctions_1_1, sanctions_1_4, combined_sanctions):
@@ -199,28 +201,62 @@ def remove_sanction(socialclub, sanction_to_remove):
         combined_sanctions = [s for s in combined_sanctions if s != sanction_to_remove]
     refresh_gui()
 
+def determine_level(logins):
+    if logins < 10:
+        return "Level 1"
+    elif logins < 30:
+        return "Level 2"
+    elif logins <= 50:
+        return "Level 3"
+    elif logins <= 100:  # Bereich von 51 bis 100
+        return "Level 4"
+    elif logins > 100:
+        return "Level 5" 
+    else:
+        return "Unbekannt"
+
 def refresh_gui():
     for widget in scroll_frame.winfo_children():
         widget.destroy()
     check_vars.clear()
     sanction_buttons.clear()
-    
+
+    # Anzeige für §1.1-Sanktionen
     if sanctions_1_1:
         lbl_1_1 = tk.Label(scroll_frame, text="Sanktionen für §1.1", bg='#e0e0e0', font=('Arial', 12, 'bold'))
         lbl_1_1.pack(anchor='w', pady=(10, 0))
         for sanction in sanctions_1_1:
             var = tk.BooleanVar(value=True)
-            check_vars.append((var, sanction))
+            ip_check_var = tk.BooleanVar(value=False)  # Kontrollkästchen für "IP Prüfen"
+            check_vars.append((var, sanction, ip_check_var))
+
+            # Level basierend auf den Logins
+            logins = sanction.get('total_logins', 0)
+            level = determine_level(logins)
+
             frame = tk.Frame(scroll_frame, bg='#ffffff', relief=tk.RAISED, borderwidth=1)
             frame.pack(anchor='w', padx=10, pady=5, fill='x')
+
             cb = tk.Checkbutton(frame, text=f"{sanction['Account ID']} - {sanction['Regelverstoß']} - Socialclubs: {sanction.get('Socialclubs', 'Unbekannt')}", variable=var, onvalue=True, offvalue=False, bg='#ffffff', font=('Arial', 10))
             cb.pack(side='left', padx=5)
+
             btn_details = tk.Button(frame, text="Details", command=lambda s=sanction: show_sanction_details(s), font=('Arial', 10), bg='#f0f0f0')
             btn_details.pack(side='left', padx=5)
+
             btn_remove = tk.Button(frame, text="Entfernen", command=lambda s=sanction: remove_sanction(None, s), font=('Arial', 10), bg='#f0f0f0')
             btn_remove.pack(side='left', padx=5)
+
+            # Kontrollkästchen für "IP Prüfen"
+            ip_check = tk.Checkbutton(frame, text="IP Prüfen", variable=ip_check_var, onvalue=True, offvalue=False, bg='#ffffff', font=('Arial', 10))
+            ip_check.pack(side='left', padx=5)
+
+            # Level anzeigen
+            lbl_level = tk.Label(frame, text=level, bg='#ffffff', font=('Arial', 10))
+            lbl_level.pack(side='left', padx=5)
+
             sanction_buttons.append((btn_details, btn_remove))
 
+    # Anzeige für §1.4-Sanktionen
     if sanctions_1_4:
         lbl_1_4 = tk.Label(scroll_frame, text="Sanktionen für §1.4", bg='#e0e0e0', font=('Arial', 12, 'bold'))
         lbl_1_4.pack(anchor='w', pady=(10, 0))
@@ -229,31 +265,68 @@ def refresh_gui():
             lbl_socialclub.pack(anchor='w', pady=(5, 0), padx=20)
             for sanction in sanctions:
                 var = tk.BooleanVar(value=True)
-                check_vars.append((var, sanction))
+                ip_check_var = tk.BooleanVar(value=False)  # Kontrollkästchen für "IP Prüfen"
+                check_vars.append((var, sanction, ip_check_var))
+
+                # Level basierend auf den Logins
+                logins = sanction.get('total_logins', 0)
+                level = determine_level(logins)
+
                 frame = tk.Frame(scroll_frame, bg='#ffffff', relief=tk.RAISED, borderwidth=1)
                 frame.pack(anchor='w', padx=10, pady=5, fill='x')
+
                 cb = tk.Checkbutton(frame, text=f"{sanction['Account ID']} - {sanction['Regelverstoß']} - {sanction['Sanktion']}", variable=var, onvalue=True, offvalue=False, fg='red' if 'Permanenter Bann' in sanction['Sanktion'] else 'black', bg='#ffffff', font=('Arial', 10))
                 cb.pack(side='left', padx=5)
+
                 btn_details = tk.Button(frame, text="Details", command=lambda s=sanction: show_sanction_details(s), font=('Arial', 10), bg='#f0f0f0')
                 btn_details.pack(side='left', padx=5)
+
                 btn_remove = tk.Button(frame, text="Entfernen", command=lambda s=sanction: remove_sanction(socialclub, s), font=('Arial', 10), bg='#f0f0f0')
                 btn_remove.pack(side='left', padx=5)
+
+                # Kontrollkästchen für "IP Prüfen"
+                ip_check = tk.Checkbutton(frame, text="IP Prüfen", variable=ip_check_var, onvalue=True, offvalue=False, bg='#ffffff', font=('Arial', 10))
+                ip_check.pack(side='left', padx=5)
+
+                # Level anzeigen
+                lbl_level = tk.Label(frame, text=level, bg='#ffffff', font=('Arial', 10))
+                lbl_level.pack(side='left', padx=5)
+
                 sanction_buttons.append((btn_details, btn_remove))
 
+    # Anzeige für kombinierte Sanktionen
     if combined_sanctions:
         lbl_combined = tk.Label(scroll_frame, text="Kombinierte Sanktionen für §1.1 und §1.4", bg='#e0e0e0', font=('Arial', 12, 'bold'))
         lbl_combined.pack(anchor='w', pady=(10, 0))
         for sanction in combined_sanctions:
             var = tk.BooleanVar(value=True)
-            check_vars.append((var, sanction))
+            ip_check_var = tk.BooleanVar(value=False)  # Kontrollkästchen für "IP Prüfen"
+            check_vars.append((var, sanction, ip_check_var))
+
+            # Level basierend auf den Logins
+            logins = sanction.get('total_logins', 0)
+            level = determine_level(logins)
+
             frame = tk.Frame(scroll_frame, bg='#ffffff', relief=tk.RAISED, borderwidth=1)
             frame.pack(anchor='w', padx=10, pady=5, fill='x')
+
             cb = tk.Checkbutton(frame, text=f"{sanction['Account ID']} - {sanction['Regelverstoß']} - Socialclubs: {sanction.get('Socialclubs', 'Unbekannt')}", variable=var, onvalue=True, offvalue=False, fg='blue', bg='#ffffff', font=('Arial', 10))
             cb.pack(side='left', padx=5)
+
             btn_details = tk.Button(frame, text="Details", command=lambda s=sanction: show_sanction_details(s), font=('Arial', 10), bg='#f0f0f0')
             btn_details.pack(side='left', padx=5)
+
             btn_remove = tk.Button(frame, text="Entfernen", command=lambda s=sanction: remove_sanction(None, s), font=('Arial', 10), bg='#f0f0f0')
             btn_remove.pack(side='left', padx=5)
+
+            # Kontrollkästchen für "IP Prüfen"
+            ip_check = tk.Checkbutton(frame, text="IP Prüfen", variable=ip_check_var, onvalue=True, offvalue=False, bg='#ffffff', font=('Arial', 10))
+            ip_check.pack(side='left', padx=5)
+
+            # Level anzeigen
+            lbl_level = tk.Label(frame, text=level, bg='#ffffff', font=('Arial', 10))
+            lbl_level.pack(side='left', padx=5)
+
             sanction_buttons.append((btn_details, btn_remove))
 
 def reload_data():
@@ -324,9 +397,11 @@ def show_gui_and_select_sanctions(sanctions_1_1_data, sanctions_1_4_data, combin
 def submit():
     selected_sanctions = []
     selected_ids = set()
-    for var, sanction in check_vars:
+    for var, sanction, ip_check_var in check_vars:
         if var.get():
             if sanction['Account ID'] not in selected_ids:
+                # Füge die IP-Prüfen Information zu den Sanktionen hinzu
+                sanction['IP Prüfen'] = 'Ja' if ip_check_var.get() else 'Nein'
                 selected_sanctions.append(sanction)
                 selected_ids.add(sanction['Account ID'])
     selected_sanctions.extend(combined_sanctions)  # Füge kombinierte Sanktionen hinzu
@@ -340,7 +415,9 @@ def save_sanctions(selected_sanctions):
         'Regelverstoß': set(),
         'Socialclubs': set(),
         'Sanktion': None,  # Halte hier die zusammengeführte Sanktion
-        'Benutzername': None
+        'Benutzername': None,
+        'IP Prüfen': 'Nein',
+        'Level': 'Unbekannt'
     })
 
     # Sammle alle Informationen pro Account ID
@@ -358,9 +435,17 @@ def save_sanctions(selected_sanctions):
         else:
             combined_sanctions[account_id]['Sanktion'] = sanction['Sanktion']
 
+        # Setze "IP Prüfen" auf "Ja", wenn das Kontrollkästchen aktiviert ist
+        if sanction.get('IP Prüfen') == 'Ja':
+            combined_sanctions[account_id]['IP Prüfen'] = 'Ja'
+
+        # Bestimme das Level
+        logins = sanction.get('total_logins', 0)
+        combined_sanctions[account_id]['Level'] = determine_level(logins)
+
     # Schreibe die kombinierten Sanktionen in die CSV-Datei
     with open(config['DEFAULT']['DefaultExportPath'], 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion']
+        fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion', 'IP Prüfen', 'Level']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -370,20 +455,21 @@ def save_sanctions(selected_sanctions):
                 'Account ID': account_id,
                 'Benutzername': sanction_data['Benutzername'],
                 'Socialclubs': ', '.join(sanction_data['Socialclubs']),
-                'Sanktion': sanction_data['Sanktion']
+                'Sanktion': sanction_data['Sanktion'],
+                'IP Prüfen': sanction_data['IP Prüfen'],
+                'Level': sanction_data['Level']
             })
 
     log_action("Sanktionen in sanktionen_output.csv gespeichert")
     messagebox.showinfo("Erfolg", "Ausgewählte Sanktionen gespeichert.")
 
-
-
 def export_sanctions_command():
     selected_sanctions = []
     selected_ids = set()
-    for var, sanction in check_vars:
+    for var, sanction, ip_check_var in check_vars:
         if var.get():
             if sanction['Account ID'] not in selected_ids:
+                sanction['IP Prüfen'] = 'Ja' if ip_check_var.get() else 'Nein'
                 selected_sanctions.append(sanction)
                 selected_ids.add(sanction['Account ID'])
     selected_sanctions.extend(combined_sanctions)  # Füge kombinierte Sanktionen hinzu
@@ -399,8 +485,10 @@ def export_sanctions(sanctions, file_path):
     combined_sanctions = defaultdict(lambda: {
         'Regelverstoß': set(),
         'Socialclubs': set(),
-        'Sanktion': None,  # Halte hier die zusammengeführte Sanktion
-        'Benutzername': None
+        'Sanktion': None,
+        'Benutzername': None,
+        'IP Prüfen': 'Nein',
+        'Level': 'Unbekannt'
     })
 
     # Sammle alle Informationen pro Account ID
@@ -418,9 +506,17 @@ def export_sanctions(sanctions, file_path):
         else:
             combined_sanctions[account_id]['Sanktion'] = sanction['Sanktion']
 
+        # Setze "IP Prüfen" auf "Ja", wenn das Kontrollkästchen aktiviert ist
+        if sanction.get('IP Prüfen') == 'Ja':
+            combined_sanctions[account_id]['IP Prüfen'] = 'Ja'
+
+        # Bestimme das Level
+        logins = sanction.get('total_logins', 0)
+        combined_sanctions[account_id]['Level'] = determine_level(logins)
+
     # Schreibe die kombinierten Sanktionen in die CSV-Datei
     with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion']
+        fieldnames = ['Regelverstoß', 'Account ID', 'Benutzername', 'Socialclubs', 'Sanktion', 'IP Prüfen', 'Level']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -430,13 +526,13 @@ def export_sanctions(sanctions, file_path):
                 'Account ID': account_id,
                 'Benutzername': sanction_data['Benutzername'],
                 'Socialclubs': ', '.join(sanction_data['Socialclubs']),
-                'Sanktion': sanction_data['Sanktion']
+                'Sanktion': sanction_data['Sanktion'],
+                'IP Prüfen': sanction_data['IP Prüfen'],
+                'Level': sanction_data['Level']
             })
 
     log_action(f"Sanktionen in {file_path} exportiert")
     messagebox.showinfo("Erfolg", f"Sanktionen in {file_path} exportiert.")
-
-
 
 try:
     with open('acp_data.txt', 'r') as file:
